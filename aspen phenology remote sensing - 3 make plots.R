@@ -73,7 +73,7 @@ rasters_snow = do.call("c",lapply(file_snow,rast))
 
 
 
-plot_climate <- function(rasters, years=c(2013:2019), varname_nice, colors_diverging=FALSE, qclip=TRUE)
+plot_climate <- function(rasters, years=c(2013:2019), varname_nice, colors_diverging=FALSE, qclip=TRUE, na.value='black')
 {
   g_final = ggarrange(plotlist = lapply(1:nlyr(rasters), function(yearid) {
     
@@ -100,22 +100,23 @@ plot_climate <- function(rasters, years=c(2013:2019), varname_nice, colors_diver
       xlab("") + 
       ylab("") +
       ggtitle(years[yearid]) +
-      theme(plot.margin=margin(0.01, 0.01, 0.01, 0.01, "cm"))
+      theme(plot.margin=margin(0.01, 0.01, 0.01, 0.01, "cm")) +
+      theme(panel.background = element_rect(fill = "black"))
     
     if (colors_diverging==FALSE)
     {
       g = g + 
-        scale_fill_viridis(na.value='white',limits=qvals) 
+        scale_fill_viridis(na.value=na.value,limits=qvals) 
     }
     else
     {
       g = g +
-        scale_fill_distiller(na.value='white',limits=qvals,palette='Spectral')
+        scale_fill_distiller(na.value=na.value,limits=qvals,palette='Spectral')
     }
     
     if (yearid==nlyr(rasters))
     {
-      g = g + annotation_scale(location = "bl", height = unit(0.1, "cm"))# +
+      g = g + annotation_scale(location = "bl", height = unit(0.1, "cm"),bar_cols=c('darkgray','white'),text_col='white')# +
         #annotation_north_arrow(location = "br",
         #                       style = north_arrow_minimal,
         #                       height = unit(0.5, "cm"))
