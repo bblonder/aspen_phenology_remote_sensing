@@ -1,10 +1,10 @@
 library(dplyr)
 library(terra)
 
-r_phenology_2016 = rast('../13SCD/MSLSP_13SCD_2016.nc')
-r_phenology_2017 = rast('../13SCD/MSLSP_13SCD_2017.nc')
-r_phenology_2018 = rast('../13SCD/MSLSP_13SCD_2018.nc')
-r_phenology_2019 = rast('../13SCD/MSLSP_13SCD_2019.nc')
+r_phenology_2016 = rast('../../13SCD/MSLSP_13SCD_2016.nc')
+r_phenology_2017 = rast('../../13SCD/MSLSP_13SCD_2017.nc')
+r_phenology_2018 = rast('../../13SCD/MSLSP_13SCD_2018.nc')
+r_phenology_2019 = rast('../../13SCD/MSLSP_13SCD_2019.nc')
 
 simplify_geology <- function(unit)
 {
@@ -114,4 +114,4 @@ df_site_combined_trimmed$fraction_aspen = terra::extract(r_aspen_cover_trimmed, 
 
 
 # write out file
-write.csv(df_site_combined_trimmed, file='data_for_heritability.csv', row.names=FALSE)
+write.csv(df_site_combined_trimmed, file='outputs/data_for_heritability.csv', row.names=FALSE)

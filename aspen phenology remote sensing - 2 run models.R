@@ -10,7 +10,7 @@ library(tidyr)
 library(caret)
 
 vars_phenology = c("OGI", "OGMn", "GSL.50", "EVImax")
-df_all = read.csv('df_all.csv')
+df_all = read.csv('outputs/df_all_aspen_cover_0.25.csv')
 
 
 # make models
@@ -19,7 +19,10 @@ df_all_for_rf = df_all %>%
   mutate(y_grid = cut(y, breaks=seq(min(y),max(y),by=100))) %>%
   mutate(grid_id = as.numeric(factor(paste(x_grid, y_grid)))) %>%
   mutate(year=factor(as.character(year))) %>%
-  mutate(cytotype=factor(cytotype,levels=c("diploid","triploid")))
+  filter(aspen_cover >= 0.5)
+
+# finalize counts
+df_all_for_rf %>% group_by(year) %>% summarize(count=n())
 
 
 split_train_test <- function(df, fraction, xvar, yvar)
@@ -41,59 +44,36 @@ split_train_test <- function(df, fraction, xvar, yvar)
   return(list(train_x=train_x, train_y=train_y, test_x=test_x, test_y=test_y))
 }
 
-train_test_model <- function(tt, xvar, categorical)
+train_test_model <- function(tt, xvar)
 {
   print('training model')
-  if (categorical==TRUE)
-  {
-    m_rf = ranger(x=tt$train_x, y=tt$train_y,
-                  max.depth = 10,
-                  num.trees = 1000,
-                  classification=TRUE,
-                  verbose=TRUE,
-                  probability = TRUE,
-                  write.forest=TRUE,
-                  importance = "impurity")
-  }
-  else
-  {
-    m_rf = ranger(x=tt$train_x, y=tt$train_y,
-                  max.depth = 10,
-                  num.trees = 1000,
-                  classification=FALSE,
-                  verbose=TRUE,
-                  probability = FALSE,
-                  write.forest=TRUE,
-                  importance = "impurity")    
-  }
+
+  m_rf = ranger(x=tt$train_x, y=tt$train_y,
+                max.depth = 10,
+                num.trees = 1000,
+                classification=FALSE,
+                verbose=TRUE,
+                probability = FALSE,
+                write.forest=TRUE,
+                importance = "impurity")    
+
   
   print('testing model')
   labels_predicted = predict(m_rf, tt$test_x)$predictions
   
   print('summarizing model')
-  if (categorical==TRUE)
-  {
-    # apply threshold to probabilistic model
-    labels_predicted = as.numeric(factor(labels_predicted[,1] < 0.5))
-    labels_true = as.numeric(factor(tt$test_y))
-    
-    cm = confusionMatrix(factor(labels_predicted), factor(labels_true))$byClass
-    result_this = data.frame(t(cm), xvars=paste(xvar,collapse="*"), np_train = nrow(tt$train_x),nv=ncol(tt$train_x))
-  }
-  else
-  {
-    labels_true = tt$test_y
-    
-    stats = postResample(labels_true, labels_predicted)
-    
-    result_this = data.frame(rmse=stats["RMSE"], r2=stats["Rsquared"], xvars=paste(xvar,collapse="*"), np_train = nrow(tt$train_x),nv=ncol(tt$train_x))
-  }
+  labels_true = tt$test_y
+  
+  stats = postResample(labels_true, labels_predicted)
+  
+  result_this = data.frame(rmse=stats["RMSE"], r2=stats["Rsquared"], xvars=paste(xvar,collapse="*"), np_train = nrow(tt$train_x),nv=ncol(tt$train_x))
+
   
   return(list(result=result_this,model=m_rf))
 }
 
 
-try_models <- function(df, yvar, xvar, categorical=TRUE, iter=5, fraction=0.8)
+try_models <- function(df, yvar, xvar, iter=5, fraction=0.8)
 {
   print(yvar)
   result = NULL
@@ -107,7 +87,7 @@ try_models <- function(df, yvar, xvar, categorical=TRUE, iter=5, fraction=0.8)
     
     tt = split_train_test(df=df, xvar=xvar, yvar=yvar, fraction=fraction)
     
-    output = train_test_model(tt, xvar, categorical=categorical)
+    output = train_test_model(tt, xvar)
     
     # copy over outputs
     result_this = output$result
@@ -127,12 +107,13 @@ try_models <- function(df, yvar, xvar, categorical=TRUE, iter=5, fraction=0.8)
   return(list(result=result,models=models,datasets=datasets,xvar=xvar))
 }
 
+xvars = setdiff(names(df_all), c('aspen_cover','x','y',vars_phenology))
+
 models_all = lapply(vars_phenology, try_models, 
                     df=df_all_for_rf,
-                    categorical=FALSE,
-                    iter=3,
+                    iter=10,
                     fraction=0.8,
-                    xvar=setdiff(names(df_all), c('aspen_cover','x','y',vars_phenology)))
+                    xvar=xvars)
 names(models_all) = vars_phenology
 
 
@@ -178,11 +159,40 @@ do_pdp <- function(model_list, pred.vars, grid.resolution, categorical, df_train
   return(result_all)
 }
 
-summarize_pdp <- function(pdp)
+
+# make 1d pdps for each phenology response variable and predictor xvar, across all replicate rf models
+do_pdps_1d <- function(yvar, grid.resolution=10, xvars.interaction=c('year'))
 {
-  yvar = pdp$yvar[1]
+  xvars_for_pdp = setdiff(xvars, xvars.interaction) # could include cytotype interaciton here
+  pdps_all_1d = lapply(xvars_for_pdp, function(xvar) {
+    print(xvar)
+    do_pdp(model_list = models_all[[yvar]],
+           pred.vars = c(xvar, xvars.interaction),
+           grid.resolution = grid.resolution, # need to increase this
+           categorical=FALSE,
+           df_train=df_all_for_rf)
+    
+    })
   
-  pdp = pdp %>% as_tibble %>% dplyr::select(-yvar)
+  return(pdps_all_1d)
+}
+
+# summarize PDPs (this is computationally intensive
+pdps_all = lapply(vars_phenology, do_pdps_1d)
+names(pdps_all) = vars_phenology
+
+
+
+
+
+
+
+
+
+summarize_pdp <- function(pdp, yvar)
+{
+  pdp = pdp %>% 
+    as_tibble
   
   if ("year" %in% names(pdp))
   {
@@ -220,26 +230,68 @@ summarize_pdp <- function(pdp)
     mutate(yhat.q50 = q50$yhat) %>%
     mutate(yhat.q05 = q05$yhat) %>%
     mutate(yhat.q95 = q95$yhat) %>%
-    mutate(yvar=yvar)
+    mutate(yvar=yvar) %>%
+    mutate(xvar=names(pdp)[1])
   
   if ("cytotype" %in% names(pdp))
   {
-    final = final %>% 
-      mutate(cytotype = factor(cytotype,levels=c(1,2),labels=c("diploid","triploid"),ordered=TRUE))
+    #final = final %>% 
+    #  mutate(cytotype = factor(cytotype,levels=c(1,2),labels=c("diploid","triploid"),ordered=TRUE))
   }
+  
+  names(final)[1] = 'x'
   
   return(final)
 }
 
+pdp_summaries_all = rbindlist(lapply(1:length(pdps_all), function(i) {
+  pdp_this = pdps_all[[i]]
+  cat('\n')
+  rbindlist(lapply(pdp_this, function(pdp_this_xvar) { 
+    cat('.')
+    summarize_pdp(pdp = pdp_this_xvar, yvar = names(pdps_all)[i]) 
+    }))
+  }))
 
-# make 1d pdps for each phenology response variable
-pdps_all = lapply(models_all, make_all_pdps_1d)
+
+
+
+rf_importances = rbindlist(lapply(1:length(models_all), function(i) {
+  
+  df = rbindlist(lapply(models_all[[i]]$models, function(x) as_tibble(t(importance(x)))))
+  df$yvar = names(models_all)[i]
+  return(df)
+  })) %>% melt(id.vars="yvar",value.name='importance')
+
+rf_r2 = rbindlist(lapply(1:length(models_all), function(i) {
+  df = rbindlist(lapply(models_all[[i]]$models, function(x) as_tibble(x$r.squared)))
+  df$yvar = names(models_all)[i]
+  return(df)
+})) %>% melt(id.vars="yvar",value.name="r2")
+
+
+write.csv(rf_importances,file='outputs/rf_importances.csv',row.names=F)
+write.csv(rf_r2,file='outputs/rf_r2.csv',row.names=F)
+write.csv(pdp_summaries_all,file='outputs/rf_pdp_summaries.csv',row.names=F)
+
+
+
+save.image(file = 'outputs/workspace script 2.Rdata')
 
 
 
 
-
-save.image(file = 'workspace all.Rdata')
+# 
+# ggplot(pdp_summaries_all, aes(x=x,y=yhat.q50,group=year)) +
+#   geom_line() +
+#   facet_grid(yvar~xvar,scales='free')
+# 
+# 
+# 
+# ggplot(importances,aes(x=variable,y=value)) +
+#   geom_boxplot() +
+#   facet_wrap(~yvar,scales='free_y') +
+#   theme_bw()
 
 
 
