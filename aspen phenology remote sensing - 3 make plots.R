@@ -111,7 +111,8 @@ plot_climate <- function(rasters, years=c(2013:2019), varname_nice, colors_diver
     else
     {
       g = g +
-        scale_fill_distiller(na.value=na.value,limits=qvals,palette='Spectral')
+        scale_fill_gradientn(na.value=na.value,limits=qvals,colours = c('pink','red','orange','lightgray','green','blue','cyan'))
+        #scale_fill_distiller(na.value=na.value,limits=qvals,palette='RdBu')
     }
     
     if (yearid==nlyr(rasters))
@@ -156,11 +157,11 @@ r_pheno_all = lapply(unique(info_pheno$var), function(var) {
                       colors_diverging = TRUE)
   })
 
-ggsave(r_pheno_all[[3]],file='figures/g_pheno_greenup_date.png',width=9,height=3.5)
-g_pheno_other = ggarrange(r_pheno_all[[1]], r_pheno_all[[2]], r_pheno_all[[4]], nrow=3,ncol=1,
+#ggsave(r_pheno_all[[3]],file='figures/g_pheno_greenup_date.png',width=9,height=3.5)
+g_pheno_other = ggarrange(r_pheno_all[[1]], r_pheno_all[[2]], r_pheno_all[[3]], r_pheno_all[[4]], nrow=4,ncol=1,
                   labels='auto',
                   align='hv')
-ggsave(g_pheno_other, file='figures/g_pheno_other.png',width=9,height=9)
+ggsave(g_pheno_other, file='figures/g_pheno_other.png',width=9,height=12)
 
 
 
@@ -262,26 +263,24 @@ ggsave(g_map, file='figures/g_map.png',width=8,height=5)
 df_all = read.csv('outputs/df_all_aspen_cover_0.25.csv')
 
 df_all_for_plotting = df_all %>%
-  filter(aspen_cover >= 0.5) %>%
+  filter(aspen_cover >= 0.5 & cytotype_fraction_diploid >= 0) %>%
   #group_by(year, cytotype) %>%
   dplyr::select(year, cytotype_fraction_diploid, OGI, OGMn, GSL.50,EVImax) %>%
-  melt(id.vars=c("year","cytotype_fraction_diploid")) %>%
-  group_split(variable)
+  melt(id.vars=c("year","cytotype_fraction_diploid"))
 
 
-g_by_year = ggarrange(plotlist=lapply(df_all_for_plotting, function(df_ss) {
-  ggplot(df_ss, aes(x=value,col=cytotype_fraction_diploid > 0.5,fill=cytotype_fraction_diploid > 0.5)) +
-    geom_density(alpha=0.25) +
-    facet_wrap(~year,scales='free_y',nrow=4,ncol=1) +
-    xlab(nice_names_pheno[df_ss$variable[1]]) +
-    scale_color_manual(values=c(viridis(n=2)[1],viridis(n=2)[2]),name='Cytotype diploid fraction > 0.5') +
-    scale_fill_manual(values=c(viridis(n=2)[1],viridis(n=2)[2]),guide='none') +
-    theme_bw() +
-    ylab("Density") +
-    theme(axis.text.y = element_blank())
-}),nrow=1,ncol=4, common.legend = TRUE,legend='bottom')
-ggsave(g_by_year,file='figures/g_by_year.png',width=9,height=6)
 
+g_range = ggplot(df_all_for_plotting,aes(x=factor(year),y=value,
+                               color=cut(cytotype_fraction_diploid,breaks=seq(0,1,by=0.25)),
+                               fill=cut(cytotype_fraction_diploid,breaks=seq(0,1,by=0.25)))) + 
+  geom_violin(draw_quantiles=c(0.1,0.5,0.9),alpha=0.5) + 
+  facet_wrap(~variable,scales='free',labeller = as_labeller(nice_names_pheno)) +
+  theme_bw() +
+  scale_color_viridis(name='Cytotype diploid fraction',discrete=TRUE, na.translate=FALSE) +
+  scale_fill_viridis(name='Cytotype diploid fraction',discrete=TRUE, na.translate=FALSE) +
+  theme(legend.position='bottom')
+
+ggsave(g_range, file='figures/g_range.png',width=7,height=5)
 
 
 
@@ -375,4 +374,4 @@ g_r2 = ggplot(rf_r2, aes(x=yvar,y=r2)) +
   ylim(0,1) +
   scale_x_discrete(labels=nice_names_pheno) +
   coord_flip()
-ggsave(g_r2, file='figures/g_r2.png',width=6,height=3)
+ggsave(g_r2, file='figures/g_r2.png',width=6,height=2)
