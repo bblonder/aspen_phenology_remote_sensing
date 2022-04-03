@@ -266,11 +266,15 @@ df_all_for_plotting = df_all %>%
   filter(aspen_cover >= 0.5 & cytotype_fraction_diploid >= 0) %>%
   #group_by(year, cytotype) %>%
   dplyr::select(year, cytotype_fraction_diploid, OGI, OGMn, GSL.50,EVImax) %>%
-  melt(id.vars=c("year","cytotype_fraction_diploid"))
+  melt(id.vars=c("year","cytotype_fraction_diploid")) %>%
+  mutate(variable=as.character(variable))
+
+# make a table
+df_all_for_plotting %>% group_by(variable) %>%
+  summarize(q10=quantile(value,0.025),q50=quantile(value,0.50),q90=quantile(value,0.975))
 
 
-
-g_range = ggplot(df_all_for_plotting,aes(x=factor(year),y=value,
+g_range_cyto = ggplot(df_all_for_plotting,aes(x=factor(year),y=value,
                                color=cut(cytotype_fraction_diploid,breaks=seq(0,1,by=0.25)),
                                fill=cut(cytotype_fraction_diploid,breaks=seq(0,1,by=0.25)))) + 
   geom_violin(draw_quantiles=c(0.1,0.5,0.9),alpha=0.5) + 
@@ -278,9 +282,70 @@ g_range = ggplot(df_all_for_plotting,aes(x=factor(year),y=value,
   theme_bw() +
   scale_color_viridis(name='Cytotype diploid fraction',discrete=TRUE, na.translate=FALSE) +
   scale_fill_viridis(name='Cytotype diploid fraction',discrete=TRUE, na.translate=FALSE) +
-  theme(legend.position='bottom')
+  ylab('Value') +
+  xlab('Year')
 
-ggsave(g_range, file='figures/g_range.png',width=7,height=5)
+
+
+
+
+df_aspen_sex = read.csv('/Users/benjaminblonder/Documents/ASU/aspen remote sensing/aspen sex markers/aspen_sex_aug_11_2021.csv')
+df_aspen_site = read.csv('/Users/benjaminblonder/Documents/ASU/aspen remote sensing/2019/data analysis 2020/aspen data site-level processed 30 Mar 2020.csv')
+
+df_aspen_joined = df_aspen_site %>% dplyr::select(Site_Code, X.UTM, Y.UTM, Cytotype=Ploidy_level) %>%
+  left_join(df_aspen_sex %>% dplyr::select(Site_Code, geneticSexID))  
+
+paths_pheno = dir(path = 'outputs', pattern='r_pheno*',full.names = TRUE)
+names_vars = gsub('\\.tif','',gsub("r_pheno_","",basename(paths_pheno)))
+rasters_pheno = rast(paths_pheno)
+names(rasters_pheno) = names_vars
+
+raster_cover = rast('outputs/r_pred_aspen_cover.tif')
+
+
+
+vals_pheno = extract(c(raster_cover,rasters_pheno), df_aspen_joined %>% dplyr::select(X.UTM,Y.UTM))
+
+df_aspen_joined_final = cbind(df_aspen_joined, vals_pheno) %>% dplyr::select(-ID,-X.UTM,-Y.UTM)
+
+df_aspen_joined_final_melted = melt(df_aspen_joined_final, 
+                                    id.vars=c('Site_Code','Cytotype','geneticSexID','aspen_cover')) %>%
+  mutate(var_pheno = sapply(strsplit(as.character(variable),'_'),head,1)) %>%
+  mutate(year = gsub("X","",sapply(strsplit(as.character(variable),'_'),tail,1))) %>%
+  arrange(Site_Code,var_pheno,year)
+
+# get final dataset with viable levels of cover
+df_for_plotting = df_aspen_joined_final_melted %>% filter(aspen_cover >= 0.25) %>% na.omit
+
+df_for_plotting$Site_Code %>% unique %>% length
+nrow(df_for_plotting)
+
+
+
+nice_names_pheno_ground_based = c(OGI='Greenup date (doy)', 
+                                  OGMn='Greendown date (doy)', 
+                                  GSL.50='Growing season length (days)', 
+                                  EVImax='Maximum greenness (fraction)',
+                                  `2016`=2016,
+                                  `2017`=2017,
+                                  `2018`=2018,
+                                  `2019`=2019)
+
+
+g_range_sex = ggplot(df_for_plotting, aes(color=Cytotype,fill=Cytotype,linetype=geneticSexID,x=year,y=value)) +
+  facet_wrap(~var_pheno,scales='free',labeller = as_labeller(nice_names_pheno_ground_based)) +
+  geom_violin(draw_quantiles=c(0.5),alpha=0.5) +
+  theme_bw() +
+  scale_color_viridis_d(name='Cytotype',direction=-1) +
+  scale_fill_viridis_d(name='Cytotype',direction=-1) +
+  scale_linetype_manual(values=c('solid','dotted'),name='Sex') +
+  ylab('Value') +
+  xlab('Year')
+
+
+
+ggsave(ggarrange(g_range_cyto, g_range_sex, nrow=2,ncol=1,labels='auto',align='hv'), 
+       file='figures/g_range.png',width=7,height=8)
 
 
 
@@ -365,6 +430,9 @@ ggsave(g_imp, file='figures/g_imp.png',width=11,height=5)
 
 
 rf_r2 = read.csv('outputs/rf_r2.csv')
+
+# summarize
+rf_r2 %>% group_by(yvar) %>% summarize(mean(r2),sd(r2))
 
 g_r2 = ggplot(rf_r2, aes(x=yvar,y=r2)) +
   geom_boxplot() +
