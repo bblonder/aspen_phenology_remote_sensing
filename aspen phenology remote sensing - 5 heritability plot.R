@@ -26,7 +26,7 @@ make_plot <- function(df)
     coord_cartesian(ylim = c(0, 1)) +
     theme_bw() +
     theme(legend.position='none') +
-    scale_color_manual(values=c('gray',viridis(n=3)[3],viridis(n=3)[1])) +
+    scale_color_manual(values=c(gray(0.3),viridis(n=3)[3],viridis(n=3)[1])) +
     scale_x_discrete(drop=FALSE)
 }
 
