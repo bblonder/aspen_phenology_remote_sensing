@@ -317,6 +317,7 @@ df_aspen_joined_final_melted = melt(df_aspen_joined_final,
 # get final dataset with viable levels of cover
 df_for_plotting = df_aspen_joined_final_melted %>% filter(aspen_cover >= 0.25) %>% na.omit
 
+# count # of sites at 25% cover
 df_for_plotting$Site_Code %>% unique %>% length
 nrow(df_for_plotting)
 
@@ -351,7 +352,6 @@ ggsave(ggarrange(g_range_cyto, g_range_sex, nrow=2,ncol=1,labels='auto',align='h
 
 
 # draw the PDPs
-#rm(list=ls())
 
 nice_names_preds = c(`year`="Year",
                      `cytotype_fraction_diploid`='Cytotype (fraction diploid)',
