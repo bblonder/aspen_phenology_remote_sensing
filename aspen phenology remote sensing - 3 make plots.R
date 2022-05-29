@@ -10,30 +10,18 @@ library(viridis)
 library(tidyr)
 library(caret)
 library(sf)
-library(dplyr)
-library(ggplot2)
 library(MuMIn)
-library(ggpubr)
 library(MASS)
-library(visreg)
 library(ggExtra)
 library(ggspatial)
 library(ggsn)
 library(RStoolbox)
-library(wesanderson)
 library(maps)
 library(ggrepel)
-library(rgdal)
-library(mgcv)
-library(terra)
 library(RColorBrewer)
 library(viridis)
-library(pals)
-library(mgcViz)
 library(raster)
 library(reshape)
-library(yarrr)
-library(cividis)
 
 #load('outputs/workspace script 2.Rdata')
 if(!file.exists('figures'))
@@ -61,9 +49,13 @@ file_tmax = dir('outputs',pattern="*tmax*",full.names = TRUE)
 file_tmax = file_tmax[-c(1)] # start at 2013
 rasters_tmax = do.call("c",lapply(file_tmax,rast))
 
-file_sm = dir('outputs',pattern="*sm_q01*",full.names = TRUE)
-file_sm = file_sm[-c(1)] # start at 2013
-rasters_sm = do.call("c",lapply(file_sm,rast))
+file_sm_q01 = dir('outputs',pattern="*sm_q01*",full.names = TRUE)
+file_sm_q01 = file_sm_q01[-c(1)] # start at 2013
+rasters_sm_q01 = do.call("c",lapply(file_sm_q01,rast))
+
+file_sm_runs_med_dur = dir('outputs',pattern="*sm_runs_med_dur*",full.names = TRUE)
+file_sm_runs_med_dur = file_sm_runs_med_dur[-c(1)] # start at 2013
+rasters_sm_runs_med_dur = do.call("c",lapply(file_sm_runs_med_dur,rast))
 
 file_snow = dir('outputs',pattern="*snowmelt*",full.names = TRUE)
 file_snow = file_snow[-c(1)] # start at 2013
@@ -91,7 +83,7 @@ plot_climate <- function(rasters, years=c(2013:2019), varname_nice, colors_diver
       qvals = max(abs(qvals)) * c(-1, 1)
     }
     
-    g = ggR(raster(rasters[[yearid]]),geom_raster = TRUE) + 
+    g = ggR(raster(rasters[[yearid]]),geom_raster = TRUE,maxpixels=1e7) + 
       theme_bw() +
       theme(panel.grid = element_blank()) +
       coord_equal() + 
@@ -128,13 +120,14 @@ plot_climate <- function(rasters, years=c(2013:2019), varname_nice, colors_diver
 }
 
 r_tmax = plot_climate(rasters_tmax, varname_nice = "Maximum temperature (°C)")
-r_sm = plot_climate(rasters_sm, varname_nice = "Minimum soil moisture (fraction)")
+r_sm_q01 = plot_climate(rasters_sm_q01, varname_nice = "Minimum soil moisture (fraction)")
+r_sm_runs_max_dur = plot_climate(rasters_sm_runs_med_dur, varname_nice = "Median drought duration (days)")
 r_snow = plot_climate(rasters_snow, varname_nice = "Snowmelt date (doy)")
 
-g_env = ggarrange(r_tmax, r_sm, r_snow, nrow=3,ncol=1,
+g_env = ggarrange(r_snow, r_tmax, r_sm_q01, r_sm_runs_max_dur, nrow=4,ncol=1,
                     labels='auto',
                     align='hv')
-ggsave(g_env, file='figures/g_env.png',width=9,height=7)
+ggsave(g_env, file='figures/g_env.png',width=9,height=9)
 
 
 
@@ -184,7 +177,7 @@ raster_cytotype = rast('outputs/r_pred_is_diploid.tif')
 r_cytotype = plot_climate(raster_cytotype, years=NULL, varname_nice="Cytotype (fraction diploid)", qclip=FALSE)
 
 
-g_topo = ggarrange(r_t1, r_t2, r_t3, r_t4, r_cytotype, align='hv',nrow=2,ncol=3, legend='top')
+g_topo = ggarrange(r_t1, r_t2, r_t3, r_t4, r_cytotype, align='hv',nrow=2,ncol=3, legend='top',labels='auto')
 ggsave(g_topo, file='figures/g_topo_genetics.png',width=9,height=6)
 
 
@@ -243,7 +236,6 @@ g_map_big <- ggplot() + geom_polygon(data = USA,
                    nudge_x      = 0.15,
                    direction    = "y",
                    hjust        = 0,
-                   label.padding=0.05,
                    alpha=0.5) +
   geom_polygon(data = s_ws_ll_df, aes(x=long, y=lat, group=group),fill='purple',col='purple',size=0.01) +
   geom_point(data=data_cities,aes(x=long,y=lat),size=0.2) +
@@ -367,6 +359,10 @@ nice_names_preds = c(`year`="Year",
                      `snowmelt.t.minus.2`='Snowmelt date (t-2) (doy)', 
                      `snowmelt.t.minus.1`='Snowmelt date (t-1) (doy)', 
                      `snowmelt.t.minus.0`='Snowmelt date (t-0) (doy)', 
+                     `sm_runs_med_dur.t.minus.3`='Median drought duration (t-3) (days)', 
+                     `sm_runs_med_dur.t.minus.2`='Median drought duration (t-2) (days)', 
+                     `sm_runs_med_dur.t.minus.1`='Median drought duration (t-1) (days)', 
+                     `sm_runs_med_dur.t.minus.0`='Median drought duration (t-0) (days)',
                      `sm_q01.t.minus.3`='Minimum soil moisture (t-3) (g/g)', 
                      `sm_q01.t.minus.2`='Minimum soil moisture (t-2) (g/g)', 
                      `sm_q01.t.minus.1`='Minimum soil moisture (t-1) (g/g)', 
@@ -390,11 +386,19 @@ rf_relative_importances = rf_importances %>%
   summarize(relimp=mean(importance)) %>%
   ungroup %>%
   mutate(combo=paste(yvar, variable)) %>%
-  dplyr::select(combo, relimp)
+  dplyr::select(yvar, combo, relimp)
+
+rf_relative_importances_top_n = rf_relative_importances %>%
+  mutate(contains_year = grepl("year",combo)) %>%
+  filter(contains_year==FALSE) %>%
+  ungroup %>%
+  group_by(yvar) %>%
+  arrange(yvar, relimp) %>% 
+  slice(tail(row_number(), 5))
 
 rf_pdp_summaries_joined = rf_pdp_summaries %>% 
-  mutate(combo=paste(yvar,xvar)) %>%
-  left_join(rf_relative_importances, by='combo')
+  mutate(combo=paste(yvar, xvar)) %>%
+  left_join(rf_relative_importances %>% dplyr::select(-yvar), by='combo')
 
 g_pdps = ggplot(rf_pdp_summaries_joined, aes(x=x,
                              y=yhat.q50,
@@ -403,7 +407,7 @@ g_pdps = ggplot(rf_pdp_summaries_joined, aes(x=x,
                              color=factor(year),
                              group=factor(year),
                              alpha=relimp)) +
-  geom_line() +
+  geom_line(size=2) +
   geom_errorbar() +
   theme_bw() +
   facet_grid(yvar~xvar,scales='free',labeller = as_labeller(names_short)) +
@@ -414,7 +418,60 @@ g_pdps = ggplot(rf_pdp_summaries_joined, aes(x=x,
   theme(axis.text.x = element_text(angle = 45, hjust=1)) +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
 
-ggsave(g_pdps, file='figures/g_pdps.png',width=18,height=8)
+ggsave(g_pdps, file='figures/g_pdps.png',width=22,height=8)
+
+
+
+rf_pdp_summaries_joined_top_n = rf_pdp_summaries %>% 
+  ungroup %>%
+  mutate(combo=paste(yvar, xvar)) %>%
+  right_join(rf_relative_importances_top_n %>% 
+               ungroup %>% 
+               dplyr::select(-yvar) %>% as.data.frame, by='combo')
+
+g_pdp_summaries_top_n_raw = lapply(rf_pdp_summaries_joined_top_n %>% group_by(yvar) %>% group_split, function(df) {
+  xvar_ordered = df %>% 
+    mutate(relimp_order=as.numeric(factor(relimp))) %>% 
+    dplyr::select(xvar, relimp, relimp_order) %>% 
+    unique %>% 
+    arrange(relimp_order)
+  print(xvar_ordered)
+  
+  df_ordered = df %>% 
+    mutate(xvar = factor(xvar, levels=rev(xvar_ordered$xvar), ordered=TRUE))
+  
+  ggplot(df_ordered, aes(x,
+                 y=yhat.q50,
+                 ymin=yhat.q05,
+                 ymax=yhat.q95,
+                 color=factor(year),
+                 group=factor(year))) +
+    geom_line(size=2,alpha=0.75) +
+    geom_errorbar() +
+    theme_bw() +
+    facet_wrap(~xvar,scales='free_x',labeller = as_labeller(names_short),nrow=1) +   
+    scale_color_brewer(palette='Spectral',name='Year') +
+    #scale_alpha(name='Mean relative\nvariable importance') +
+    xlab("Predictor") +
+    ylab("Response") +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+    ggtitle(nice_names_pheno[df$yvar[1]])
+})
+
+g_pdp_summaries_top_n_all = ggarrange(plotlist=g_pdp_summaries_top_n_raw, 
+                                      ncol=1, common.legend = TRUE,
+                                      legend='bottom',
+                                      labels='auto')
+
+ggsave(g_pdp_summaries_top_n_all,file='figures/g_pdp_summaries_top_n_all.png',width=9,height=10)
+
+
+
+
+
+
+
 
 
 g_imp = ggplot(rf_importances, aes(x=variable,y=importance)) +

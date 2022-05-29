@@ -8,23 +8,46 @@ library(pdp)
 library(viridis)
 library(tidyr)
 library(caret)
+library(raster)
+library(ncdf4)
 
 try(dir.create('outputs'))
 
+# this is a miserable hack due to some ncdf reading issues when i upgraded to R 4.2 and the packages changed.
+# should work just as well with rast(fn) but apparently not...
+read_ncdf <- function(fn, names_drop)
+{
+  nc_this = nc_open(fn)
+  varnames_this = attributes(nc_this$var)$names
+  print(varnames_this)
+  varnames_this = setdiff(varnames_this, names_drop)
+  r_all = lapply(varnames_this, function(v) { raster(fn,varname=v) })
+  r_all = stack(r_all)
+  names(r_all) = varnames_this
+  
+  fn_final = sprintf("~/Downloads/%s_%.6f.grd",basename(fn),runif(1))
+  writeRaster(r_all,fn_final, format="raster", overwrite=TRUE,options=c("COMPRESS=LZW"))
+  r_all = rast(fn_final)
+  
+  return(r_all)
+}
+
 # read in phenology and convert EVImax to fractions
-r_phenology_2016 = rast('../../13SCD/MSLSP_13SCD_2016.nc')
+names_drop_pheno = c("transverse_mercator","NumCycles","Peak","EVIamp","EVIarea","OGI_2","50PCGI_2","OGMx_2","Peak_2","OGD_2","50PCGD_2","OGMn_2","EVImax_2","EVIamp_2","EVIarea_2","numObs","gupQA_2","gdownQA_2")
+
+r_phenology_2016 = read_ncdf('../../13SCD/MSLSP_13SCD_2016.nc', names_drop=names_drop_pheno)
 r_phenology_2016[["EVImax"]] = r_phenology_2016[["EVImax"]] / 10000
-r_phenology_2017 = rast('../../13SCD/MSLSP_13SCD_2017.nc')
+r_phenology_2017 = read_ncdf('../../13SCD/MSLSP_13SCD_2017.nc', names_drop=names_drop_pheno)
 r_phenology_2017[["EVImax"]] = r_phenology_2017[["EVImax"]] / 10000
-r_phenology_2018 = rast('../../13SCD/MSLSP_13SCD_2018.nc')
+r_phenology_2018 = read_ncdf('../../13SCD/MSLSP_13SCD_2018.nc', names_drop=names_drop_pheno)
 r_phenology_2018[["EVImax"]] = r_phenology_2018[["EVImax"]] / 10000
-r_phenology_2019 = rast('../../13SCD/MSLSP_13SCD_2019.nc')
+r_phenology_2019 = read_ncdf('../../13SCD/MSLSP_13SCD_2019.nc', names_drop=names_drop_pheno)
 r_phenology_2019[["EVImax"]] = r_phenology_2019[["EVImax"]] / 10000
 
 # get variable names
-vars_all = read.csv('../13SCD/MSLSP_Layers_V0.csv') %>% 
+vars_all = read.csv('../../13SCD/MSLSP_Layers_V0.csv') %>% 
   mutate(short_name = make.names(short_name)) %>%
-  select(long_name, short_name) %>%
+  dplyr::select(long_name, short_name) %>%
   rbind(data.frame(long_name="Growing season length (50% greenup - 50% greendown)",short_name="GSL.50"))
 
 vars_phenology = c("OGI", "OGMn", "GSL.50", "EVImax")#c("OGI", "X50PCGI", "OGMx", "OGD", "X50PCGD", "OGMn", "EVImax", "GSL.15", "GSL.50", "GSL.90")
@@ -50,9 +73,9 @@ names(r_neon) = c("elevation","cos_aspect","slope","height_canopy","is_diploid",
 
 
 
-# switch aspen data to 30 m resolution and clip to aspen
+# switch aspen data to phenology projection 
 r_neon_projected = project(r_neon, r_phenology_2016)
-# trim neon data to relevant area
+# trim neon data to aspen area
 r_neon_trimmed = crop(r_neon_projected, trim(r_neon_projected["is_diploid"]))
 
 # check cover predictions
@@ -94,11 +117,15 @@ names(r_pheno_all) = make.names(2016:2019)
 
 # load in temp metrics
 fn_tmax = dir(path='../../gridmet',pattern="*.nc",full.names = TRUE)
-r_tmax_list = lapply(fn_tmax, rast)
+r_tmax_list = lapply(fn_tmax, stack) # avoid reading ncdf with rast
+# make things smaller to go faster
+r_tmax_list = lapply(r_tmax_list, function(x) {
+  crop(x, y=c(-109,-105,37,41))
+  })
 
-
-r_tmax_q99 = lapply(r_tmax_list, quantile, 0.99, na.rm=TRUE)
-r_tmax_q99 = rast(r_tmax_q99)
+# weird hack due to base raster package use
+r_tmax_q99 = lapply(r_tmax_list, function(x) {calc(stack(x), fun=function(y) {quantile(y, 0.99, na.rm=TRUE)})})
+r_tmax_q99 = rast(lapply(r_tmax_q99,rast))
 r_tmax_q99_projected = project(r_tmax_q99, r_phenology_2016)
 r_tmax_q99_masked = mask(r_tmax_q99_projected, r_neon_projected["is_diploid"])
 r_tmax_q99_trimmed = crop(r_tmax_q99_masked, trim(r_neon_projected["is_diploid"]))
@@ -113,13 +140,13 @@ r_sm_q01_trimmed = crop(r_sm_q01_masked, trim(r_neon_projected["is_diploid"]))
 
 r_sm_runs_med_dur = rast('metrics/metric_annual_0.1m_runs_med.low.spell.duration.tif')
 r_sm_runs_med_dur_projected = project(r_sm_runs_med_dur, r_phenology_2016)
-r_sm_runs_med_dur_projected[is.infinite(r_sm_runs_med_dur_projected)] = 0
+r_sm_runs_med_dur_projected[is.na(r_sm_runs_med_dur_projected)] = 0
 r_sm_runs_med_dur_masked = mask(r_sm_runs_med_dur_projected, r_neon_projected["is_diploid"])
 r_sm_runs_med_dur_trimmed = crop(r_sm_runs_med_dur_masked, trim(r_neon_projected["is_diploid"]))
 
 r_sm_runs_max_dur = rast('metrics/metric_annual_0.1m_runs_max.low.duration.tif')
 r_sm_runs_max_dur_projected = project(r_sm_runs_max_dur, r_phenology_2016)
-r_sm_runs_max_dur_projected[is.infinite(r_sm_runs_max_dur_projected)] = 0
+r_sm_runs_max_dur_projected[is.na(r_sm_runs_max_dur_projected)] = 0
 r_sm_runs_max_dur_masked = mask(r_sm_runs_max_dur_projected, r_neon_projected["is_diploid"])
 r_sm_runs_max_dur_trimmed = crop(r_sm_runs_max_dur_masked, trim(r_neon_projected["is_diploid"]))
 
@@ -155,11 +182,19 @@ names(r_tmax_q99_trimmed_for_output) = paste("tmax_q99",make.names(2012:2019),se
 r_sm_q01_trimmed_for_output = r_sm_q01_trimmed
 names(r_sm_q01_trimmed_for_output) = paste("sm_q01",make.names(2012:2019),sep=".")
 
+r_sm_runs_med_dur_trimmed_for_output = r_sm_runs_med_dur_trimmed
+names(r_sm_runs_med_dur_trimmed_for_output) = paste("sm_runs_med_dur",make.names(2012:2019),sep=".")
+
+r_sm_runs_max_dur_trimmed_for_output = r_sm_runs_max_dur_trimmed
+names(r_sm_runs_max_dur_trimmed_for_output) = paste("sm_runs_max_dur",make.names(2012:2019),sep=".")
+
 # write out predictor rasters
 r_env_all = c(r_neon_trimmed, 
               r_snowmelt_trimmed_for_output,
               r_tmax_q99_trimmed_for_output,
-              r_sm_q01_trimmed_for_output)
+              r_sm_q01_trimmed_for_output,
+              r_sm_runs_med_dur_trimmed_for_output,
+              r_sm_runs_max_dur_trimmed_for_output)
 
 for (i in 1:nlyr(r_env_all))
 {
@@ -184,7 +219,7 @@ for (i in 1:length(r_pheno_all))
 get_raster_for_years <- function(r, year, num_lags, varname) # assumes names are X2015, X2016, ...
 {
   years_this = paste(varname,make.names((year-num_lags+1):year),sep=".")
-  print(years_this)
+
   r_out = r[[years_this]]
   print(names(r_out)) #to verify output
   names(r_out) = sprintf("%s.t.minus.%d", varname, (num_lags-1):0)
@@ -194,11 +229,12 @@ get_raster_for_years <- function(r, year, num_lags, varname) # assumes names are
 
 process_data <- function(r, year, num_lags_moisture=4, num_lags_snowmelt=4, num_lags_temp = 4, aspen_cover_min = 0.25, qa_max = 2)
 {
-  r_soilmoisture_q01 = get_raster_for_years(r_sm_q01_trimmed, varname="sm_q01",year=year, num_lags=num_lags_moisture)
-  r_snowmelt_date = get_raster_for_years(r_snowmelt_trimmed, varname="snowmelt",year=year, num_lags=num_lags_snowmelt)
-  r_maxtemp = get_raster_for_years(r_tmax_q99_trimmed, varname="tmax_q99",year=year, num_lags=num_lags_temp)
+  r_sm_q01 = get_raster_for_years(r_sm_q01_trimmed_for_output, varname="sm_q01",year=year, num_lags=num_lags_moisture)
+  r_sm_runs_med_dur = get_raster_for_years(r_sm_runs_med_dur_trimmed_for_output, varname="sm_runs_med_dur",year=year, num_lags=num_lags_moisture)
+  r_snowmelt_date = get_raster_for_years(r_snowmelt_trimmed_for_output, varname="snowmelt",year=year, num_lags=num_lags_snowmelt)
+  r_maxtemp = get_raster_for_years(r_tmax_q99_trimmed_for_output, varname="tmax_q99",year=year, num_lags=num_lags_temp)
   
-  r_joined = c(r,r_neon_trimmed, r_maxtemp, r_snowmelt_date, r_soilmoisture_q01)
+  r_joined = c(r,r_neon_trimmed, r_maxtemp, r_snowmelt_date, r_sm_q01, r_sm_runs_med_dur)
   data = as.data.frame(r_joined[])
   
   xy = xyFromCell(r_joined, 1:ncell(r_joined))
@@ -206,7 +242,7 @@ process_data <- function(r, year, num_lags_moisture=4, num_lags_snowmelt=4, num_
   data = cbind(data, xy)
   
   names(data) = make.names(names(data))
-  
+
   data = data %>% 
     # only pixels that are likely to be unshadowed during mid-morning sentinel-2 overpass - check if realistic
     filter(!is.na(elevation) & aspen_cover > aspen_cover_min) %>%  #slope < 60 & height_canopy > 2 & cos_aspect < 0.9 & 
@@ -218,7 +254,13 @@ process_data <- function(r, year, num_lags_moisture=4, num_lags_snowmelt=4, num_
     mutate(GSL.15 = OGMn - OGI) %>%
     mutate(GSL.50 = X50PCGD - X50PCGI) %>%
     mutate(GSL.90 = OGD - OGMx) %>%
-    select(year, x, y, aspen_cover, all_of(vars_phenology), all_of(names(r_neon)),all_of(names(r_maxtemp)), all_of(names(r_snowmelt_date)), all_of(names(r_soilmoisture_q01))) %>%
+    dplyr::select(year, x, y, aspen_cover, 
+                  all_of(vars_phenology), 
+                  all_of(names(r_neon)),
+                  all_of(names(r_maxtemp)), 
+                  all_of(names(r_snowmelt_date)), 
+                  all_of(names(r_sm_q01)),
+                  all_of(names(r_sm_runs_med_dur))) %>%
     rename(cytotype_fraction_diploid=is_diploid)
   
   return(data)

@@ -1,3 +1,5 @@
+# note this assumes we removed the 0930 date from the raw soil moisture files per Hoang on 5/27/2022...
+
 library(terra)
 library(dplyr)
 library(ggplot2)
@@ -8,9 +10,10 @@ library(lubridate)
 
 process_year <- function(year, band) # band 1 = 0.1 m, band 2 = 0.4 m, band 3 = 1 m, etc
 {
-  basedir = sprintf('../SOILMOISTURETRAN/%d/',year)
+  basedir = sprintf('../../SOIL MOISTURE/%d/',year)
   
   files = dir(basedir)
+  print(files)
 
   # select a given depth
   rasters = lapply(file.path(basedir,files), function(x) { rast(x)[[band]] })

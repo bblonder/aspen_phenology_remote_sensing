@@ -12,6 +12,9 @@ nice_names_pheno = c(OGI='Greenup date (doy)',
                      EVImax='Maximum greenness (fraction)')
 
 nice_names_pheno_short = sapply(nice_names_pheno, function(x) {  strsplit(x,split=" \\(")[[1]][1]  })
+nice_names_pheno_short = nice_names_pheno_short[order(names(nice_names_pheno_short))]
+nice_names_pheno_short_with_labels = paste("(",letters[1:4], ") ", nice_names_pheno_short,sep="")
+names(nice_names_pheno_short_with_labels) = names(nice_names_pheno_short)
 
 #make plot
 make_plot <- function(df)
@@ -20,7 +23,7 @@ make_plot <- function(df)
     geom_point(size=3, position=position_dodge(width=0.5)) +
     geom_errorbar(aes(ymin=(Variance-SE), ymax=(Variance+SE)),
                   position=position_dodge(width=0.4)) +
-    facet_wrap(~phenology, labeller = as_labeller(nice_names_pheno_short),nrow=1) +
+    facet_wrap(~phenology, labeller = as_labeller(nice_names_pheno_short_with_labels),nrow=1) +
     theme(axis.text.x = element_text(angle = 75, hjust=1)) + 
     labs(y="Vg/Vp (narrow-sense heritability)", x='Cytotype') +
     coord_cartesian(ylim = c(0, 1)) +

@@ -280,19 +280,3 @@ save.image(file = 'outputs/workspace script 2.Rdata')
 
 
 
-
-# 
-# ggplot(pdp_summaries_all, aes(x=x,y=yhat.q50,group=year)) +
-#   geom_line() +
-#   facet_grid(yvar~xvar,scales='free')
-# 
-# 
-# 
-# ggplot(importances,aes(x=variable,y=value)) +
-#   geom_boxplot() +
-#   facet_wrap(~yvar,scales='free_y') +
-#   theme_bw()
-
-
-
-
