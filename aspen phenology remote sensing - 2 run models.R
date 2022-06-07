@@ -19,7 +19,8 @@ df_all_for_rf = df_all %>%
   mutate(y_grid = cut(y, breaks=seq(min(y),max(y),by=100))) %>%
   mutate(grid_id = as.numeric(factor(paste(x_grid, y_grid)))) %>%
   mutate(year=factor(as.character(year))) %>%
-  filter(aspen_cover >= 0.5)
+  filter(aspen_cover >= 0.5) %>%
+  dplyr::select(-gupQA,-gdownQA)
 
 # finalize counts
 df_all_for_rf %>% group_by(year) %>% summarize(count=n())
@@ -107,7 +108,9 @@ try_models <- function(df, yvar, xvar, iter=5, fraction=0.8)
   return(list(result=result,models=models,datasets=datasets,xvar=xvar))
 }
 
-xvars = setdiff(names(df_all), c('aspen_cover','x','y',vars_phenology))
+# keep the x/y grid and grid ID for train/test, but don't use as a formal predictor in the model
+xvars = setdiff(names(df_all_for_rf), c('aspen_cover','x','y',vars_phenology,'x_grid','y_grid','grid_id'))
+print(xvars)
 
 models_all = lapply(vars_phenology, try_models, 
                     df=df_all_for_rf,
@@ -165,7 +168,7 @@ do_pdps_1d <- function(yvar, grid.resolution=10, xvars.interaction=c('year'))
 {
   xvars_for_pdp = setdiff(xvars, xvars.interaction) # could include cytotype interaciton here
   pdps_all_1d = lapply(xvars_for_pdp, function(xvar) {
-    print(xvar)
+    print(c(yvar,xvar))
     do_pdp(model_list = models_all[[yvar]],
            pred.vars = c(xvar, xvars.interaction),
            grid.resolution = grid.resolution, # need to increase this
@@ -177,7 +180,7 @@ do_pdps_1d <- function(yvar, grid.resolution=10, xvars.interaction=c('year'))
   return(pdps_all_1d)
 }
 
-# summarize PDPs (this is computationally intensive
+# summarize PDPs (this is computationally intensive)
 pdps_all = lapply(vars_phenology, do_pdps_1d)
 names(pdps_all) = vars_phenology
 

@@ -25,7 +25,7 @@ make_plot <- function(df)
                   position=position_dodge(width=0.4)) +
     facet_wrap(~phenology, labeller = as_labeller(nice_names_pheno_short_with_labels),nrow=1) +
     theme(axis.text.x = element_text(angle = 75, hjust=1)) + 
-    labs(y="Vg/Vp (narrow-sense heritability)", x='Cytotype') +
+    labs(y="Vg/Vp (Field heritability)", x='Cytotype') +
     coord_cartesian(ylim = c(0, 1)) +
     theme_bw() +
     theme(legend.position='none') +

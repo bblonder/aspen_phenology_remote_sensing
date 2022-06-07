@@ -30,6 +30,7 @@ if(!file.exists('figures'))
 }
 
 file_pheno = dir('outputs',pattern="*pheno*",full.names = TRUE)
+file_pheno = file_pheno[grep("masked",file_pheno)]
 rasters_pheno = lapply(file_pheno,rast)
 
 nice_names_pheno = c(OGI='Greenup date (doy)', 
@@ -40,8 +41,9 @@ nice_names_pheno = c(OGI='Greenup date (doy)',
 
 info_pheno = data.frame(file=file_pheno, 
                         year=gsub("X","",gsub("\\.tif","",sapply(strsplit(file_pheno,'_'),tail,1))),
-                        var=sapply(strsplit(file_pheno,'_'),function(x) {x[3]})
-                        )
+                        var=sapply(strsplit(file_pheno,'_'),function(x) {x[6]})
+                        ) %>%
+  filter(var %in% names(nice_names_pheno))
 info_pheno$nice_name = nice_names_pheno[info_pheno$var]
 
 # show time series predictors
@@ -60,18 +62,19 @@ rasters_sm_runs_med_dur = do.call("c",lapply(file_sm_runs_med_dur,rast))
 file_snow = dir('outputs',pattern="*snowmelt*",full.names = TRUE)
 file_snow = file_snow[-c(1)] # start at 2013
 rasters_snow = do.call("c",lapply(file_snow,rast))
+rasters_snow[rasters_snow<0] = NA
 
 
 
 
-
-plot_climate <- function(rasters, years=c(2013:2019), varname_nice, colors_diverging=FALSE, qclip=TRUE, na.value='black')
+plot_climate <- function(rasters, years=c(2013:2019), varname_nice, colors_diverging=FALSE, qclip=TRUE, na.value='black',nrow=1)
 {
   g_final = ggarrange(plotlist = lapply(1:nlyr(rasters), function(yearid) {
     
     if (qclip==TRUE)
     {
-      qvals = rasters[] %>% na.omit %>% as.numeric %>% quantile(c(0.02,0.98))
+      alpha = 0.01
+      qvals = rasters[] %>% na.omit %>% as.numeric %>% quantile(c(0+alpha/2,1-alpha/2))
     }
     else
     {
@@ -115,7 +118,7 @@ plot_climate <- function(rasters, years=c(2013:2019), varname_nice, colors_diver
         #                       height = unit(0.5, "cm"))
     }
     return(g)
-  }),common.legend = TRUE,legend='top',nrow = 1,ncol=nlyr(rasters))
+  }),common.legend = TRUE,legend='top',nrow = nrow,ncol=floor(nlyr(rasters)/nrow))
   return(g_final)
 }
 
@@ -147,15 +150,22 @@ r_pheno_all = lapply(unique(info_pheno$var), function(var) {
   
   plots = plot_climate(rast(rasters_pheno[indices]) - meanval,years=2016:2019, 
                        varname_nice=name_printed,
-                      colors_diverging = TRUE)
+                      colors_diverging = TRUE,
+                      nrow=2)
   })
 
 #ggsave(r_pheno_all[[3]],file='figures/g_pheno_greenup_date.png',width=9,height=3.5)
-g_pheno_other = ggarrange(r_pheno_all[[1]], r_pheno_all[[2]], r_pheno_all[[3]], r_pheno_all[[4]], nrow=4,ncol=1,
-                  labels='auto',
-                  align='hv')
-ggsave(g_pheno_other, file='figures/g_pheno_other.png',width=9,height=12)
 
+# # plot all together
+# g_pheno_other = ggarrange(r_pheno_all[[1]], r_pheno_all[[2]], r_pheno_all[[3]], r_pheno_all[[4]], nrow=4,ncol=1,
+#                   labels='auto',
+#                   align='hv')
+# ggsave(g_pheno_other, file='figures/g_pheno_other.png',width=9,height=12)
+
+# plot one by one
+lapply(1:length(r_pheno_all), function(i) {
+  ggsave(r_pheno_all[[i]], file=sprintf('figures/g_pheno_%s.png',unique(info_pheno$var)[i]),width=8,height=10)
+  })
 
 
 
@@ -168,9 +178,9 @@ raster_height  = terra::mask(rast('outputs/r_pred_height_canopy.tif'), rasters_s
 
 
 r_t1 = plot_climate(raster_cos_aspect,years=NULL,varname_nice="Cosine aspect",qclip = FALSE)
-r_t2 = plot_climate(raster_slope,years=NULL,,varname_nice="Slope (°)",qclip = FALSE)
-r_t3 = plot_climate(raster_elevation,years=NULL,,varname_nice="Elevation (m)",qclip = FALSE)
-r_t4 = plot_climate(raster_height,years=NULL,,varname_nice="Canopy height (m)",qclip = FALSE)
+r_t2 = plot_climate(raster_slope,years=NULL,varname_nice="Slope (°)",qclip = FALSE)
+r_t3 = plot_climate(raster_elevation,years=NULL,varname_nice="Elevation (m)",qclip = FALSE)
+r_t4 = plot_climate(raster_height,years=NULL,varname_nice="Canopy height (m)",qclip = FALSE)
 
 
 raster_cytotype = rast('outputs/r_pred_is_diploid.tif')
@@ -288,7 +298,9 @@ df_aspen_joined = df_aspen_site %>% dplyr::select(Site_Code, X.UTM, Y.UTM, Cytot
   left_join(df_aspen_sex %>% dplyr::select(Site_Code, geneticSexID))  
 
 paths_pheno = dir(path = 'outputs', pattern='r_pheno*',full.names = TRUE)
-names_vars = gsub('\\.tif','',gsub("r_pheno_","",basename(paths_pheno)))
+paths_pheno = paths_pheno[grep("masked",paths_pheno)]
+paths_pheno = paths_pheno[!grepl("QA",paths_pheno)]
+names_vars = gsub('\\.tif','',gsub("r_pheno_all_trimmed_masked_","",basename(paths_pheno)))
 rasters_pheno = rast(paths_pheno)
 names(rasters_pheno) = names_vars
 
@@ -413,8 +425,8 @@ g_pdps = ggplot(rf_pdp_summaries_joined, aes(x=x,
   facet_grid(yvar~xvar,scales='free',labeller = as_labeller(names_short)) +
   scale_color_brewer(palette='Spectral',name='Year') +
   scale_alpha(name='Mean relative\nvariable importance') +
-  xlab("Predictor") +
-  ylab("Response") +
+  xlab("Variable") +
+  ylab("Model prediction") +
   theme(axis.text.x = element_text(angle = 45, hjust=1)) +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
 
@@ -452,8 +464,8 @@ g_pdp_summaries_top_n_raw = lapply(rf_pdp_summaries_joined_top_n %>% group_by(yv
     facet_wrap(~xvar,scales='free_x',labeller = as_labeller(names_short),nrow=1) +   
     scale_color_brewer(palette='Spectral',name='Year') +
     #scale_alpha(name='Mean relative\nvariable importance') +
-    xlab("Predictor") +
-    ylab("Response") +
+    xlab("Variable") +
+    ylab("Model prediction") +
     theme(axis.text.x = element_text(angle = 45, hjust=1)) +
     theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
     ggtitle(nice_names_pheno[df$yvar[1]])

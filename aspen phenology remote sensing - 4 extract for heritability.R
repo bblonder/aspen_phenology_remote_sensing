@@ -1,10 +1,7 @@
 library(dplyr)
 library(terra)
-
-r_phenology_2016 = rast('../../13SCD/MSLSP_13SCD_2016.nc')
-r_phenology_2017 = rast('../../13SCD/MSLSP_13SCD_2017.nc')
-r_phenology_2018 = rast('../../13SCD/MSLSP_13SCD_2018.nc')
-r_phenology_2019 = rast('../../13SCD/MSLSP_13SCD_2019.nc')
+library(raster)
+library(ncdf4)
 
 simplify_geology <- function(unit)
 {
@@ -63,10 +60,10 @@ simplify_geology <- function(unit)
 df_site_raw = read.csv('/Users/benjaminblonder/Documents/ASU/aspen remote sensing/2019/data analysis 2020/aspen data site-level processed 30 Mar 2020.csv')
 
 df_site = df_site_raw %>%
-  select(Site_Code, x=X.UTM, y=Y.UTM, Elevation, Cos.aspect, Slope, Summer.Insolation, DBH.mean, Canopy_openness, Soil.type, Geologic.Unit, Cytotype = Ploidy_level)
+  dplyr::select(Site_Code, x=X.UTM, y=Y.UTM, Elevation, Cos.aspect, Slope, Summer.Insolation, DBH.mean, Canopy_openness, Soil.type, Geologic.Unit, Cytotype = Ploidy_level)
 
 df_sex = read.csv('/Users/benjaminblonder/Documents/ASU/aspen remote sensing/aspen sex markers/aspen_sex_aug_11_2021.csv') %>%
-  select(Site_Code, geneticSexID)
+  dplyr::select(Site_Code, geneticSexID)
 
 df_site = df_site %>%
   left_join(df_sex, by="Site_Code")
@@ -74,44 +71,81 @@ df_site = df_site %>%
 # simplify the geology
 df_site$Rock_Unit = factor(sapply(df_site$Geologic.Unit,simplify_geology))
 
-df_site = df_site %>% select(-Geologic.Unit)
+df_site = df_site %>% 
+  dplyr::select(-Geologic.Unit)
 
 
-extract_pheno_data <- function(r, year)
+
+
+
+
+files_pheno_raw = dir(path='outputs',pattern='r_pheno',full.names = TRUE)
+# keep the unmasked entries as the ground based plots don't necessarily overlap the 
+# remotely sensed and clipped files
+files_pheno = files_pheno_raw[!grepl("masked",files_pheno_raw)]
+
+select_files_for_year <- function(files, year)
 {
-  e_pheno = terra::extract(x=r, y=df_site %>% select(x,y)) %>%
-    select("OGI","50PCGI","50PCGD","OGMn","EVImax","gupQA","gdownQA")
+  files_this = files[grep(year,files)]
   
-  e_pheno$OGI[e_pheno$gupQA > 4] = NA
-  e_pheno$`50PCGI`[e_pheno$gupQA > 4] = NA
-  e_pheno$OGMn[e_pheno$gdownQA > 4] = NA
-  e_pheno$`50PCGD`[e_pheno$gdownQA > 4] = NA
-  e_pheno$GSL = e_pheno$`50PCGD` - e_pheno$`50PCGI`
+  #files_this = files_this[!grepl("QA",files_this)]
   
-  names(e_pheno) = paste("pheno",year,names(e_pheno),sep=".")
+  r_this = rast(files_this)
   
-  return(e_pheno)
+  return(r_this)
 }
 
-df_2016 = extract_pheno_data(r_phenology_2016, 2016)
-df_2017 = extract_pheno_data(r_phenology_2017, 2017)
-df_2018 = extract_pheno_data(r_phenology_2018, 2018)
-df_2019 = extract_pheno_data(r_phenology_2019, 2019)
+r_pheno_2016 = select_files_for_year(files_pheno, "2016")
+r_pheno_2017 = select_files_for_year(files_pheno, "2017")
+r_pheno_2018 = select_files_for_year(files_pheno, "2018")
+r_pheno_2019 = select_files_for_year(files_pheno, "2019")
+
+extract_pheno_data <- function(r_pheno_this, year)
+{
+  e = terra::extract(x=r_pheno_this, y=df_site %>% dplyr::select(x,y))
+  
+  e$OGI[e$gupQA > 4] = NA
+  e$OGMn[e$gdownQA > 4] = NA
+  e$GSL.50[e$gdownQA > 4 | e$gupQA > 4] = NA
+  # no QC needed for EVImax
+  
+  e = e %>% 
+    dplyr::select(-gupQA, -gdownQA, -ID)
+  
+  names(e) = paste("pheno",year,names(e),sep=".")
+  
+  return(e)
+}
+
+df_pheno_2016 = extract_pheno_data(r_pheno_this=r_pheno_2016, year=2016)
+df_pheno_2017 = extract_pheno_data(r_pheno_this=r_pheno_2017, year=2017)
+df_pheno_2018 = extract_pheno_data(r_pheno_this=r_pheno_2018, year=2018)
+df_pheno_2019 = extract_pheno_data(r_pheno_this=r_pheno_2019, year=2019)
 
 
-df_site_combined = cbind(df_site, df_2016, df_2017, df_2018, df_2019)
 
-df_site_combined_trimmed = df_site_combined %>%
-  select(-contains("QA"),-contains("50"))
+df_site_combined = cbind(df_site, df_pheno_2016, df_pheno_2017, df_pheno_2018, df_pheno_2019)
 
-# get fractional cover
-r_cytotype_masked = rast('/Users/benjaminblonder/Documents/ASU/aspen remote sensing/2019/spectra analysis neon aop/cytotype analysis/r_cytotype_masked.tif') 
-r_aspen_cover = !is.na(r_cytotype_masked)
-r_aspen_cover_projected = project(r_aspen_cover, r_phenology_2016)
-r_aspen_cover_trimmed = crop(r_aspen_cover_projected, r_cytotype_masked)
 
-df_site_combined_trimmed$fraction_aspen = terra::extract(r_aspen_cover_trimmed, y=df_site_combined_trimmed %>% select(x,y))[,2]
 
+# add in other rasters
+r_sm_q01 = rast(dir('outputs',pattern='r_pred_sm_q01',full.names = TRUE))
+r_sm_runs_med_dur = rast(dir('outputs',pattern='r_pred_sm_runs_med_dur',full.names = TRUE))
+r_snowmelt = rast(dir('outputs',pattern='r_pred_snowmelt',full.names = TRUE))
+r_tmax_q99 = rast(dir('outputs',pattern='r_pred_tmax_q99',full.names = TRUE))
+r_cover = rast('outputs/r_pred_aspen_cover.tif')
+
+r_all_non_pheno = c(r_sm_q01,
+                    r_sm_runs_med_dur,
+                    r_snowmelt,
+                    r_tmax_q99,
+                    r_cover)
+
+df_other = terra::extract(x=r_all_non_pheno, y=df_site %>% dplyr::select(x,y)) %>%
+  dplyr::select(-ID)
+
+
+df_final = cbind(df_site_combined, df_other)
 
 # write out file
-write.csv(df_site_combined_trimmed, file='outputs/data_for_heritability.csv', row.names=FALSE)
+write.csv(df_final, file='outputs/data_for_heritability.csv', row.names=FALSE)
