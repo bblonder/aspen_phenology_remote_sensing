@@ -42,8 +42,14 @@ nice_names_pheno = c(OGI='Greenup date (doy)',
 info_pheno = data.frame(file=file_pheno, 
                         year=gsub("X","",gsub("\\.tif","",sapply(strsplit(file_pheno,'_'),tail,1))),
                         var=sapply(strsplit(file_pheno,'_'),function(x) {x[6]})
-                        ) %>%
-  filter(var %in% names(nice_names_pheno))
+                        )
+
+# remove the QA columns from the rasters and table
+which_pheno_keep = which(info_pheno$var %in% names(nice_names_pheno))
+rasters_pheno = rasters_pheno[which_pheno_keep]
+info_pheno = info_pheno[which_pheno_keep,]
+
+# add nice names
 info_pheno$nice_name = nice_names_pheno[info_pheno$var]
 
 # show time series predictors
@@ -141,7 +147,7 @@ r_pheno_all = lapply(unique(info_pheno$var), function(var) {
   indices = which(info_pheno$var==var)
   
   meanval = mean(unlist(sapply(rasters_pheno[indices], spatSample, size=10000)),na.rm=T)
-  print(meanval)
+  print(paste(var, meanval))
   
   name_printed = gsub("\\(", sprintf("anomaly\n4-year mean=%.2f ", meanval), info_pheno$nice_name[indices[1]])
   name_printed = gsub("\\)", "", name_printed)
