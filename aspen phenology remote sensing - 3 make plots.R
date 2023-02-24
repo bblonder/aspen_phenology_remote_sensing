@@ -164,7 +164,7 @@ r_sm_q01 = plot_raster_nice(rasters = rasters_sm_q01, varname_nice = "Minimum so
 r_sm_runs_max_dur = plot_raster_nice(rasters = rasters_sm_runs_med_dur, varname_nice = "Median drought duration (days)",qclip=TRUE, text_col='white')
 r_snow = plot_raster_nice(rasters = rasters_snow, varname_nice = "Snowmelt date (doy)",qclip=TRUE, text_col='white')
 
-g_env = ggarrange(r_tmax, r_sm_q01, r_snow, r_sm_runs_max_dur, nrow=4,ncol=1,
+g_env = ggarrange(r_tmax, r_sm_q01, r_sm_runs_max_dur, r_snow, nrow=4,ncol=1,
                     labels='auto',
                     align='hv')
 ggsave(g_env, file='figures/g_env.png',width=9,height=9)
