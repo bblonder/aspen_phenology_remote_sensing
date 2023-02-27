@@ -38,6 +38,6 @@ make_plot <- function(df)
 lapply(paste("cover",c(25,30,50,70),sep=""), function(cover_this)
 {
   cat('.')
-  ggsave(make_plot(df_heritability %>% filter(cover==cover_this)), file=sprintf("figures/g_vgvp_%s.png",cover_this), 
+  ggsave(make_plot(df_heritability %>% filter(cover==cover_this)), file=sprintf("figures/g_vgvp_%s.pdf",cover_this), 
          width=7, height=4)
 })

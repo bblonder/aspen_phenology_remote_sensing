@@ -167,7 +167,7 @@ r_snow = plot_raster_nice(rasters = rasters_snow, varname_nice = "Snowmelt date 
 g_env = ggarrange(r_tmax, r_sm_q01, r_sm_runs_max_dur, r_snow, nrow=4,ncol=1,
                     labels='auto',
                     align='hv')
-ggsave(g_env, file='figures/g_env.png',width=9,height=9)
+ggsave(g_env, file='figures/g_env.pdf',width=9,height=9)
 
 
 
@@ -192,17 +192,17 @@ g_pheno_all = lapply(unique(info_pheno$var), function(var) {
                       nrow=2)
   })
 
-#ggsave(r_pheno_all[[3]],file='figures/g_pheno_greenup_date.png',width=9,height=3.5)
+#ggsave(r_pheno_all[[3]],file='figures/g_pheno_greenup_date.pdf',width=9,height=3.5)
 
 # # plot all together
 # g_pheno_other = ggarrange(r_pheno_all[[1]], r_pheno_all[[2]], r_pheno_all[[3]], r_pheno_all[[4]], nrow=4,ncol=1,
 #                   labels='auto',
 #                   align='hv')
-# ggsave(g_pheno_other, file='figures/g_pheno_other.png',width=9,height=12)
+# ggsave(g_pheno_other, file='figures/g_pheno_other.pdf',width=9,height=12)
 
 # plot one by one
 lapply(1:length(g_pheno_all), function(i) {
-  ggsave(g_pheno_all[[i]], file=sprintf('figures/g_pheno_%s.png',unique(info_pheno$var)[i]),width=8,height=10)
+  ggsave(g_pheno_all[[i]], file=sprintf('figures/g_pheno_%s.pdf',unique(info_pheno$var)[i]),width=8,height=10)
   })
 
 
@@ -221,7 +221,7 @@ r_cytotype = plot_raster_nice(rasters=raster_cytotype, years=NULL, varname_nice=
 
 
 g_topo = ggarrange(r_t1, r_t2, r_t3, r_t4, r_cytotype, align='hv',nrow=3,ncol=2, legend='top',labels='auto')
-ggsave(g_topo, file='figures/g_topo_genetics.png',width=6,height=9)
+ggsave(g_topo, file='figures/g_topo_genetics.pdf',width=6,height=9)
 
 
 
@@ -291,7 +291,7 @@ g_map_big <- ggplot() + geom_polygon(data = USA,
   ylab("Latitude (°)")
 
 g_map = ggarrange(g_map_big, g_map_zoom,align='hv',labels = 'auto')
-ggsave(g_map, file='figures/g_map.png',width=12,height=6)
+ggsave(g_map, file='figures/g_map.pdf',width=12,height=6)
 
 
 
@@ -398,7 +398,7 @@ plot_range_violin <- function(aspen_cover_threshold=0.5)
   
   
   ggsave(ggarrange(g_range_cyto, g_range_sex, nrow=2,ncol=1,labels='auto',align='hv'), 
-         file=sprintf('figures/g_range_threshold=%.2f.png',aspen_cover_threshold),width=7,height=8)
+         file=sprintf('figures/g_range_threshold=%.2f.pdf',aspen_cover_threshold),width=7,height=8)
 }
 
 
@@ -486,7 +486,7 @@ draw_pdps_by_threshold <- function(aspen_cover_threshold)
     theme(axis.text.x = element_text(angle = 45, hjust=1)) +
     theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
   
-  ggsave(g_pdps, file=sprintf('figures/g_pdps_threshold=%.2f.png',aspen_cover_threshold),width=22,height=8)
+  ggsave(g_pdps, file=sprintf('figures/g_pdps_threshold=%.2f.pdf',aspen_cover_threshold),width=22,height=8)
   
   
   
@@ -532,7 +532,7 @@ draw_pdps_by_threshold <- function(aspen_cover_threshold)
                                         legend='bottom',
                                         labels='auto')
   
-  ggsave(g_pdp_summaries_top_n_all,file=sprintf('figures/g_pdp_summaries_top_n_all_threshold=%.2f.png',aspen_cover_threshold),width=9,height=10)
+  ggsave(g_pdp_summaries_top_n_all,file=sprintf('figures/g_pdp_summaries_top_n_all_threshold=%.2f.pdf',aspen_cover_threshold),width=9,height=10)
   
   
   
@@ -551,7 +551,7 @@ draw_pdps_by_threshold <- function(aspen_cover_threshold)
     coord_flip() +
     scale_x_discrete(labels=nice_names_preds)
   
-  ggsave(g_imp, file=sprintf('figures/g_imp_threshold=%.2f.png',aspen_cover_threshold),width=11,height=5)
+  ggsave(g_imp, file=sprintf('figures/g_imp_threshold=%.2f.pdf',aspen_cover_threshold),width=11,height=5)
   
   
   rf_r2 = read.csv(sprintf('outputs/rf_r2_cover=%f.csv',aspen_cover_threshold))
@@ -567,7 +567,7 @@ draw_pdps_by_threshold <- function(aspen_cover_threshold)
     ylim(0,1) +
     scale_x_discrete(labels=nice_names_pheno) +
     coord_flip()
-  ggsave(g_r2, file=sprintf('figures/g_r2_threshold=%.2f.png',aspen_cover_threshold),width=6,height=2)
+  ggsave(g_r2, file=sprintf('figures/g_r2_threshold=%.2f.pdf',aspen_cover_threshold),width=6,height=2)
 }
 
 
